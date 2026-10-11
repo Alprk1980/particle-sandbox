@@ -239,6 +239,9 @@ export default function Sandbox() {
             <p>Cellular automata &amp; rigid-body sandbox</p>
           </div>
         </div>
+        <div className="credit">
+          Made by <span>Autumn-Rose Attrill</span>
+        </div>
         <div className="top-actions">
           <button className={`btn play ${paused ? 'is-paused' : ''}`} onClick={() => setPaused((v) => !v)}>
             {paused ? '▶ Play' : '❚❚ Pause'}
