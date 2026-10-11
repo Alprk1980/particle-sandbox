@@ -23,6 +23,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run test:smoke
       - run: npm run build
       - run: touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3
