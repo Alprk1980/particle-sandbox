@@ -1,5 +1,5 @@
 import {
-  EMPTY, WALL, WOOD, METAL, STONE, GLASS, ICE, WATER, OIL, ACID, STEAM, SAND, PLANT, SEED, FIRE,
+  EMPTY, WALL, WOOD, METAL, STONE, GLASS, ICE, WATER, OIL, ACID, STEAM, SAND, PLANT, SEED, LEAF, FIRE,
   C4, SPARK, LAVA, SMOKE, ASH, RUBBLE, SHARD, BUILDING, WINDOW, ROAD, WIRE, GENERATOR, DRYPLANT,
   KIND, K_STATIC, K_POWDER, K_LIQUID, K_GAS, K_ENERGY,
   DENSITY, RIGID, FLAMMABLE, BURN_TIME, DISSOLVE, CONDUCTIVE, FLOATS, FRAGILE,
@@ -247,6 +247,10 @@ export class World {
   // ---------------------------------------------------------------- powders
 
   private updatePowder(x: number, y: number, i: number, t: number) {
+    if (t === LEAF) {
+      this.updateLeaf(x, y, i);
+      return;
+    }
     if (t === SEED && this.trySprout(x, y, i)) return;
     if (this.windPush(x, y, i, t, t === ASH ? 0.6 : t === SEED ? 0.3 : 0.1)) return;
     if (t === ASH && rnd() < 0.5) return;
@@ -272,6 +276,43 @@ export class World {
       const dx = rnd() < 0.5 ? -1 : 1;
       if (x + dx >= 0 && x + dx < w && this.canEnter(t, i + dx)) this.swap(i, i + dx);
     }
+  }
+
+  /** Leaves drift down slowly, swaying side to side, and settle where they land. */
+  private updateLeaf(x: number, y: number, i: number) {
+    if (this.windPush(x, y, i, LEAF, 0.8)) return;
+    const { w, h } = this;
+    if (y + 1 >= h) return;
+    const b = i + w;
+    const tb = this.type[b];
+    // Resting on something solid or floating on a liquid: stay put.
+    if (tb !== EMPTY && KIND[tb] !== K_GAS && tb !== FIRE) {
+      if (this.canEnter(LEAF, b) && rnd() < 0.3) this.swap(i, b);
+      else this.settleLeaf(x, i, b);
+      return;
+    }
+    if (rnd() < 0.7) return; // airborne: fall at a fraction of normal speed
+    // Each leaf sways on its own phase, taken from its (swap-preserved) shade.
+    const sway = Math.sin(this.frame * 0.06 + this.shade[i] * 0.1);
+    const dx = sway > 0.35 ? 1 : sway < -0.35 ? -1 : 0;
+    if (dx !== 0 && x + dx >= 0 && x + dx < w) {
+      if (rnd() < 0.35 && this.canEnter(LEAF, i + dx)) {
+        this.swap(i, i + dx); // glide sideways
+        return;
+      }
+      if (this.canEnter(LEAF, b + dx)) {
+        this.swap(i, b + dx);
+        return;
+      }
+    }
+    this.swap(i, b);
+  }
+
+  /** A landed leaf occasionally slips off a ledge so piles stay loose. */
+  private settleLeaf(x: number, i: number, b: number) {
+    if (rnd() > 0.15) return;
+    const dx = rnd() < 0.5 ? -1 : 1;
+    if (x + dx >= 0 && x + dx < this.w && this.canEnter(LEAF, b + dx)) this.swap(i, b + dx);
   }
 
   private trySprout(x: number, y: number, i: number) {
@@ -372,7 +413,7 @@ export class World {
           break;
         case ICE: this.set(j, WATER); break;
         case C4: this.detonate(j); break;
-        case OIL: case SEED: case PLANT: case DRYPLANT: this.ignite(j); break;
+        case OIL: case SEED: case LEAF: case PLANT: case DRYPLANT: this.ignite(j); break;
         case WOOD: case BUILDING: if (rnd() < 0.15) this.ignite(j); break;
         case SAND: if (rnd() < 0.006) this.set(j, GLASS); break;
         case METAL: if (rnd() < 0.002) this.set(j, LAVA); break;
@@ -551,7 +592,7 @@ export class World {
           this.life[k] = (50 + rnd() * 70) | 0;
         }
       }
-    } else if (t === SEED) {
+    } else if (t === SEED || t === LEAF) {
       this.set(j, FIRE);
     } else if (BURN_TIME[t] > 0 && this.burn[j] === 0) {
       this.burn[j] = (BURN_TIME[t] * (0.6 + rnd() * 0.8)) | 0 || 1;
@@ -1316,7 +1357,7 @@ function debrisType(t: number) {
     case GLASS: case WINDOW: case ICE: case SHARD: return SHARD;
     case WATER: case OIL: case ACID: case LAVA: case SAND: case METAL: return t;
     case WOOD: return FIRE;
-    case PLANT: case DRYPLANT: case ASH: return ASH;
+    case PLANT: case DRYPLANT: case LEAF: case ASH: return ASH;
     default: return -1;
   }
 }

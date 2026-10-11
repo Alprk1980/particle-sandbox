@@ -29,7 +29,8 @@ export const ROAD = 25;
 export const WIRE = 26;
 export const GENERATOR = 27;
 export const DRYPLANT = 28;
-export const NUM_TYPES = 29;
+export const LEAF = 29;
+export const NUM_TYPES = 30;
 
 // Movement kinds
 export const K_NONE = 0;
@@ -109,6 +110,8 @@ def(ROAD, K_STATIC, { rigid: true, dissolve: 0.01 });
 def(WIRE, K_STATIC, { rigid: true, dissolve: 0.04, conductive: true });
 def(GENERATOR, K_STATIC, { rigid: true, conductive: false });
 def(DRYPLANT, K_STATIC, { flam: 0.3, burn: 25, dissolve: 0.1 });
+// Light enough to float on water (2) but not on oil (1).
+def(LEAF, K_POWDER, { density: 1.5, flam: 0.25, dissolve: 0.15 });
 
 // ---------- Palette ----------
 export const SHADES = 32;
@@ -176,6 +179,16 @@ for (let t = 0; t < NUM_TYPES; t++) {
   }
 }
 
+// Autumn leaves span a red → orange → gold gradient instead of one tint.
+const AUTUMN = ['#9e2a1c', '#c4441f', '#e06a1f', '#e8902a', '#d9a53a', '#b5752a'].map(hex);
+for (let s = 0; s < SHADES; s++) {
+  const f = (s / SHADES) * (AUTUMN.length - 1);
+  const a = AUTUMN[f | 0];
+  const b = AUTUMN[Math.min(AUTUMN.length - 1, (f | 0) + 1)];
+  const u = f - (f | 0);
+  PALETTE[LEAF * SHADES + s] = rgba(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u);
+}
+
 // Swatch info for the UI
 export interface ElementInfo {
   id: number;
@@ -212,6 +225,7 @@ export const ELEMENT_GROUPS: { title: string; items: ElementInfo[] }[] = [
       { id: SAND, name: 'Sand', color: '#e0bf78' },
       { id: PLANT, name: 'Plant', color: '#36b84a' },
       { id: SEED, name: 'Seeds', color: '#c4975a' },
+      { id: LEAF, name: 'Autumn Leaves', color: '#e06a1f' },
     ],
   },
   {
