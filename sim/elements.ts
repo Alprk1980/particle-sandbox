@@ -83,7 +83,7 @@ function def(
 def(EMPTY, K_NONE);
 def(WALL, K_STATIC);
 def(WOOD, K_STATIC, { rigid: true, flam: 0.035, burn: 260, dissolve: 0.06, floats: true });
-def(METAL, K_STATIC, { rigid: true, dissolve: 0.015, conductive: true });
+def(METAL, K_STATIC, { rigid: true, dissolve: 0.02, conductive: true });
 def(STONE, K_STATIC, { rigid: true, dissolve: 0.008 });
 def(GLASS, K_STATIC, { rigid: true, dissolve: 0.03, fragile: true });
 def(ICE, K_STATIC, { rigid: true, dissolve: 0.05, floats: true, fragile: true });

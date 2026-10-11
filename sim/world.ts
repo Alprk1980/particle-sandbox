@@ -276,13 +276,21 @@ export class World {
 
   private trySprout(x: number, y: number, i: number) {
     const { w, h, type } = this;
-    const n = [y > 0 ? i - w : -1, y < h - 1 ? i + w : -1, x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1];
-    for (const j of n) {
-      if (j >= 0 && type[j] === WATER) {
-        this.set(j, EMPTY);
-        this.set(i, PLANT);
-        this.life[i] = (25 + rnd() * 35) | 0;
-        return true;
+    // 8-neighbours: seed and water fall together, so the water is often only
+    // diagonally adjacent (scan order always moves it one cell first).
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (type[j] === WATER) {
+          this.set(j, EMPTY);
+          this.set(i, PLANT);
+          this.life[i] = (25 + rnd() * 35) | 0;
+          return true;
+        }
       }
     }
     return false;
@@ -344,10 +352,14 @@ export class World {
   }
 
   private lavaReact(x: number, y: number, i: number) {
-    const { type } = this;
-    for (let n = 0; n < 2; n++) {
-      const j = this.rn8(x, y);
-      if (j < 0) continue;
+    const { w, h, type } = this;
+    // Check every neighbour: the lava/water steam reaction must be reliable,
+    // and lava and water separate quickly (lava sinks through it).
+    for (let d = 0; d < 8; d++) {
+      const nx = x + DX8[d];
+      const ny = y + DY8[d];
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx;
       const tj = type[j];
       switch (tj) {
         case WATER:
@@ -382,14 +394,16 @@ export class World {
   }
 
   private acidReact(x: number, y: number, i: number) {
-    const j = this.rn8(x, y);
-    if (j < 0) return false;
-    const p = DISSOLVE[this.type[j]];
-    if (p > 0 && rnd() < p * 4) {
-      this.set(j, rnd() < 0.25 ? SMOKE : EMPTY);
-      if (rnd() < 0.3) {
-        this.set(i, EMPTY);
-        return true;
+    for (let n = 0; n < 3; n++) {
+      const j = this.rn8(x, y);
+      if (j < 0) continue;
+      const p = DISSOLVE[this.type[j]];
+      if (p > 0 && rnd() < p * 4) {
+        this.set(j, rnd() < 0.25 ? SMOKE : EMPTY);
+        if (rnd() < 0.15) {
+          this.set(i, EMPTY);
+          return true;
+        }
       }
     }
     return false;
@@ -437,7 +451,7 @@ export class World {
   // ---------------------------------------------------------------- energy
 
   private updateFire(x: number, y: number, i: number) {
-    const { w, type } = this;
+    const { w, h, type } = this;
     const l = --this.life[i];
     if (l <= 0) {
       this.set(i, rnd() < 0.35 ? SMOKE : EMPTY);
@@ -456,10 +470,25 @@ export class World {
         if (rnd() < 0.08) this.set(j, WATER);
       } else if (tj === C4) {
         this.detonate(j);
-      } else if (FLAMMABLE[tj] > 0 && rnd() < FLAMMABLE[tj] * this.heatMul) {
-        this.ignite(j);
+      } else if (FLAMMABLE[tj] > 0) {
+        // Oil is a fast-burning fuel: it catches almost instantly on contact.
+        const p = FLAMMABLE[tj] * this.heatMul * (tj === OIL ? 3 : 1);
+        if (rnd() < Math.min(0.9, p)) this.ignite(j);
       }
     }
+    // Deterministic surface ignition: a flame always tries to light the fuel
+    // directly beneath it (the random pass above often misses it).
+    if (y < h - 1) {
+      const b = i + w;
+      if (type[b] === OIL && rnd() < 0.6) this.ignite(b);
+    }
+    // A flame sitting on a flammable liquid burns into it instead of
+    // drifting off the surface before it can ignite the fuel.
+    const overFuel =
+      (x > 0 && type[i - 1] === OIL) ||
+      (x < w - 1 && type[i + 1] === OIL) ||
+      (y < h - 1 && type[i + w] === OIL);
+    if (overFuel && rnd() < 0.85) return;
     if (this.windPush(x, y, i, FIRE, 1.2)) return;
     if (y > 0 && rnd() < 0.55) {
       const dx = ((rnd() * 3) | 0) - 1;
@@ -510,6 +539,18 @@ export class World {
     } else if (t === OIL) {
       this.set(j, FIRE);
       this.life[j] = (60 + rnd() * 80) | 0;
+      // Ignition kernel: a pool catches as a small flame cluster so the fire
+      // front runs along the surface instead of guttering out at the water line.
+      const { w, h, type } = this;
+      const x = j % w;
+      const y = (j / w) | 0;
+      const n = [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, y < h - 1 ? j + w : -1];
+      for (const k of n) {
+        if (k >= 0 && type[k] === OIL && rnd() < 0.5) {
+          this.set(k, FIRE);
+          this.life[k] = (50 + rnd() * 70) | 0;
+        }
+      }
     } else if (t === SEED) {
       this.set(j, FIRE);
     } else if (BURN_TIME[t] > 0 && this.burn[j] === 0) {
@@ -823,7 +864,33 @@ export class World {
       else keep.push(p);
     }
     this.pending = keep;
-    for (const i of due) if (this.type[i] === C4) this.explodeCluster(i);
+    for (const i of due) {
+      if (this.type[i] === C4) {
+        this.explodeCluster(i);
+        continue;
+      }
+      // C4 is a rigid body: it can fall while the fuse is burning, leaving the
+      // recorded cell empty. Look for the (armed) charge nearby instead.
+      const { w, h } = this;
+      const x0 = i % w;
+      const y0 = (i / w) | 0;
+      let found = -1;
+      for (let r = 1; found < 0 && r <= 5; r++) {
+        for (let dy = -r; dy <= r && found < 0; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const x = x0 + dx;
+            const y = y0 + dy;
+            if (x < 0 || y < 0 || x >= w || y >= h) continue;
+            const j = y * w + x;
+            if (this.type[j] === C4) {
+              found = j;
+              break;
+            }
+          }
+        }
+      }
+      if (found >= 0) this.explodeCluster(found);
+    }
   }
 
   private explodeCluster(i0: number) {

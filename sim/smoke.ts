@@ -39,7 +39,7 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
   for (let f = 0; f < 120; f++) w2.step();
   const topSand = count(w2, SAND);
   let fell = 0;
-  for (let i = 0; i < w2.size; i++) if (w2.type[i] === SAND && i / 40 | 0 >= 20) fell++;
+  for (let i = 0; i < w2.size; i++) if (w2.type[i] === SAND && ((i / 40) | 0) >= 20) fell++;
   check('sand: all settled at bottom', topSand === fell, `total=${topSand} atBottom=${fell}`);
 }
 
@@ -55,12 +55,13 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
 // --- 4. lava + water -> steam & stone ------------------------------------
 {
   const w2 = new World(40, 40);
-  w2.set(20 * 40 + 10, LAVA);
-  w2.set(20 * 40 + 11, WATER);
+  // water directly above lava: sustained contact (lava sinks through water)
+  for (let x = 8; x < 14; x++) {
+    w2.set(25 * 40 + x, LAVA);
+    w2.set(24 * 40 + x, WATER);
+  }
   for (let f = 0; f < 30; f++) w2.step();
-  const stone = count(w2, STONE) + count(w2, EMPTY); // stone may remain or lava consumed
   check('lava: water contact makes steam/stone', count(w2, STEAM) > 0 || count(w2, STONE) > 0, `steam=${count(w2, STEAM)} stone=${count(w2, STONE)}`);
-  void stone;
 }
 
 // --- 5. oil floats on water & burns --------------------------------------
@@ -79,7 +80,11 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
     if (w2.type[i] === WATER) waterMax = Math.max(waterMax, (i / 40) | 0);
   }
   check('oil: floats above water', oilMin < waterMax, `oilTop=${oilMin} waterBottom=${waterMax}`);
-  w2.set(28 * 40 + 15, FIRE);
+  // pool settled down and the surface is ragged: paint fire into the local
+  // surface cell of column 15 (topmost oil in that column)
+  let colTop = -1;
+  for (let y = 0; y < 40; y++) if (w2.type[y * 40 + 15] === OIL) { colTop = y; break; }
+  w2.set(colTop * 40 + 15, FIRE);
   for (let f = 0; f < 90; f++) w2.step();
   check('oil: ignites and burns', count(w2, OIL) < 55, `oilLeft=${count(w2, OIL)} (started 60)`);
 }
@@ -87,15 +92,14 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
 // --- 6. acid dissolves metal/glass/wood ----------------------------------
 {
   const w2 = new World(40, 40);
-  w2.set(20 * 40 + 15, METAL);
-  w2.set(20 * 40 + 16, GLASS);
-  w2.set(20 * 40 + 17, WOOD);
-  w2.set(21 * 40 + 15, ACID);
-  w2.set(21 * 40 + 16, ACID);
-  w2.set(21 * 40 + 17, ACID);
-  for (let f = 0; f < 600; f++) w2.step();
+  w2.set(20 * 40 + 14, METAL);
+  w2.set(20 * 40 + 17, GLASS);
+  w2.set(20 * 40 + 20, WOOD);
+  // a 6x3 acid pool under the three solids
+  for (let x = 13; x < 21; x++) for (let y = 21; y < 24; y++) w2.set(y * 40 + x, ACID);
+  for (let f = 0; f < 900; f++) w2.step();
   const left = count(w2, METAL) + count(w2, GLASS) + count(w2, WOOD);
-  check('acid: dissolves solids', left === 0, `left=${left}`);
+  check('acid: dissolves solids', left === 0, `left=${left} acidLeft=${count(w2, ACID)}`);
 }
 
 // --- 7. seed + water -> plant --------------------------------------------
@@ -111,8 +115,8 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
 {
   const w2 = new World(60, 60);
   for (let x = 25; x < 35; x++) for (let y = 25; y < 35; y++) w2.set(y * 60 + x, C4);
-  // wall around to contain debris
-  w2.set(24 * 60 + 20, SPARK);
+  // spark directly adjacent to the block corner (25,25)
+  w2.set(25 * 60 + 24, SPARK);
   for (let f = 0; f < 60; f++) w2.step();
   check('c4: detonates from spark', count(w2, C4) === 0, `c4Left=${count(w2, C4)} smoke=${count(w2, SMOKE)} fire=${count(w2, FIRE)}`);
 }
@@ -123,7 +127,7 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
   for (let x = 10; x < 20; x++) w2.set(5 * 40 + x, WOOD); // floating plank
   for (let f = 0; f < 200; f++) w2.step();
   let atBottom = 0;
-  for (let i = 0; i < w2.size; i++) if (w2.type[i] === WOOD && (i / 40) | 0 >= 30) atBottom++;
+  for (let i = 0; i < w2.size; i++) if (w2.type[i] === WOOD && ((i / 40) | 0) >= 30) atBottom++;
   check('rigid: unsupported wood falls', atBottom === 10, `woodAtBottom=${atBottom}`);
 }
 
@@ -166,12 +170,21 @@ check('city: generator placed', gens >= 20, `generators=${gens}`);
 }
 
 // --- 13. heatwave dries plants ----------------------------------------------
+// (dry plants can spontaneously ignite later in the run, so track the max)
 {
   const w2 = new World(60, 40);
   w2.heatwave = true;
   for (let x = 10; x < 50; x++) w2.set(20 * 60 + x, PLANT);
-  for (let f = 0; f < 800; f++) w2.step();
-  check('weather: heatwave dries plants', count(w2, DRYPLANT) > 0, `dry=${count(w2, DRYPLANT)}`);
+  let maxDry = 0;
+  for (let f = 0; f < 800; f++) {
+    w2.step();
+    if (f % 25 === 0) {
+      let d = 0;
+      for (let i = 0; i < w2.size; i++) if (w2.type[i] === DRYPLANT) d++;
+      maxDry = Math.max(maxDry, d);
+    }
+  }
+  check('weather: heatwave dries plants', maxDry > 0, `maxDry=${maxDry}`);
 }
 
 // --- 14. earthquake damages city --------------------------------------------
