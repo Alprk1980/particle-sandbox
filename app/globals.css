@@ -84,6 +84,15 @@ input {
   display: flex;
   gap: 8px;
 }
+.credit {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.credit span {
+  color: var(--neon);
+  text-shadow: 0 0 8px rgba(94, 242, 255, 0.5);
+}
 
 /* ---------- layout ---------- */
 .main {
@@ -474,6 +483,10 @@ canvas {
   }
   .brand p {
     display: none;
+  }
+  .credit {
+    order: 3;
+    width: 100%;
   }
   .panel.left {
     flex-direction: row;
